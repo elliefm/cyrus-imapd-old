@@ -682,11 +682,19 @@ EXPORTED int     tls_init_serverengine(const char *ident,
     };
 
     off |= SSL_OP_ALL;            /* Work around all known bugs */
-    off |= SSL_OP_NO_SSLv2;       /* Disable insecure SSLv2 */
-    off |= SSL_OP_NO_SSLv3;       /* Disable insecure SSLv3 */
     off |= SSL_OP_NO_COMPRESSION; /* Disable TLS compression */
 
     const char *tls_versions = config_getstring(IMAPOPT_TLS_VERSIONS);
+
+    if (strstr(tls_versions, "ssl2") == NULL || tlsonly) {
+	//syslog(LOG_DEBUG, "TLS server engine: Disabled SSLv2");
+	off |= SSL_OP_NO_SSLv2;
+    }
+
+    if (strstr(tls_versions, "ssl3") == NULL || tlsonly) {
+	//syslog(LOG_DEBUG, "TLS server engine: Disabled SSLv3");
+	off |= SSL_OP_NO_SSLv3;
+    }
 
     if (strstr(tls_versions, "tls1_2") == NULL) {
 #if (OPENSSL_VERSION_NUMBER >= 0x1000105fL)
