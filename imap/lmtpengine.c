@@ -1544,7 +1544,8 @@ void lmtpmode(struct lmtp_func *func,
 
 		r=tls_init_serverengine("lmtp",
 					5,   /* depth to verify */
-					1);  /* can client auth? */
+					1,   /* can client auth? */
+					1);   /* TLS only? */
 
 		if (r == -1) {
 

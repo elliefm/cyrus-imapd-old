@@ -635,7 +635,8 @@ static int tls_rand_init(void)
 // I am the server
 EXPORTED int     tls_init_serverengine(const char *ident,
 			      int verifydepth,
-			      int askcert)
+			      int askcert,
+			      int tlsonly)
 {
     int     off = 0;
     int     verify_flags = SSL_VERIFY_NONE;

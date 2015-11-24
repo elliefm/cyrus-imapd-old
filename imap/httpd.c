@@ -779,7 +779,8 @@ static void starttls(int https)
 
     result=tls_init_serverengine("http",
 				 5,        /* depth to verify */
-				 !https);  /* can client auth? */
+				 !https,   /* can client auth? */
+				 !https);  /* TLS only? */
 
     if (result == -1) {
 	syslog(LOG_ERR, "[httpd] error initializing TLS");
