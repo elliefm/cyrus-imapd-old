@@ -907,7 +907,8 @@ static int cmd_starttls(struct protstream *sieved_out, struct protstream *sieved
 
     result=tls_init_serverengine("sieve",
 				 5,        /* depth to verify */
-				 1);       /* can client auth? */
+				 1,        /* can client auth? */
+				 1);       /* TLS only? */
 
     if (result == -1) {
 
