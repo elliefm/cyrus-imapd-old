@@ -50,7 +50,9 @@
 #include <syslog.h>
 
 #include "lib/cyrusdb.h"
+#include "lib/hash.h"
 #include "lib/libconfig.h"
+#include "lib/strarray.h"
 #include "lib/util.h"
 
 #include "imap/global.h"
@@ -73,7 +75,7 @@ EXPORTED int backupdb_open(struct db **backup_dbp, struct txn **tidp)
     return r;
 }
 
-static int is_timestamped(const char *fname)
+static int is_ext_numeric(const char *fname)
 {
     const char *p = strrchr(fname, '.');
 
@@ -89,33 +91,33 @@ static int is_timestamped(const char *fname)
     return 1;
 }
 
-static int is_index(const char *fname)
+static int is_ext(const char *fname, const char *ext)
 {
     const char *p = strrchr(fname, '.');
-
-    if (!p) return 0;
-
-    return !strcmp(p, ".index");
+    return p ? !strcmp(p, ext) : 0;
 }
 
-static int is_old(const char *fname)
+static void discovered_add(hash_table *discovered,
+                           const char *userid, const char *fname)
 {
-    const char *p = strrchr(fname, '.');
+    strarray_t *backup_list = hash_lookup(userid, discovered);
 
-    if (!p) return 0;
+    if (!backup_list) {
+        backup_list = strarray_new();
+        hash_insert(userid, backup_list, discovered);
+    }
 
-    return !strcmp(p, ".old");
+    strarray_add(backup_list, fname);
 }
 
-static int reconstruct_partition(partitem_t *part_item, void *rock)
+static int discover_backups(partitem_t *part_item, void *rock)
 {
     const char *partition_root = part_item->value;
+    hash_table *discovered = (hash_table *) rock;
     DIR *root_dir = NULL, *hash_dir = NULL;
     struct dirent *root_dirent = NULL, *hash_dirent = NULL;
     char *hash_root;
     int r;
-
-    (void) rock;
 
     root_dir = opendir(partition_root);
     if (!root_dir) {
@@ -139,13 +141,13 @@ static int reconstruct_partition(partitem_t *part_item, void *rock)
                 if (hash_dirent->d_name[0] == '.') continue;
 
                 /* skip timestamped old files */
-                if (is_timestamped(hash_dirent->d_name)) continue;
+                if (is_ext_numeric(hash_dirent->d_name)) continue;
 
                 /* skip .old files */
-                if (is_old(hash_dirent->d_name)) continue;
+                if (is_ext(hash_dirent->d_name, ".old")) continue;
 
                 /* skip index files */
-                if (is_index(hash_dirent->d_name)) continue;
+                if (is_ext(hash_dirent->d_name, ".index")) continue;
 
                 /* skip unreadable files */
                 n = snprintf(fname, sizeof(fname), "%s/%s",
@@ -159,7 +161,8 @@ static int reconstruct_partition(partitem_t *part_item, void *rock)
                 /* skip directories and such */
                 if (!S_ISREG(sbuf.st_mode)) continue;
 
-                fprintf(stderr, "%s\n", fname);
+                // FIXME get the userid
+                discovered_add(discovered, hash_dirent->d_name, fname);
             }
 
             closedir(hash_dir);
@@ -176,7 +179,32 @@ static int reconstruct_partition(partitem_t *part_item, void *rock)
     return r;
 }
 
+static void discovered_dump(const char *key, void *data, void *rock)
+{
+    strarray_t *fnames = (strarray_t *) data;
+    int i;
+
+    (void) rock;
+
+    fprintf(stderr, "%s:\n", key);
+
+    for (i = 0; i < strarray_size(fnames); i++) {
+        fprintf(stderr, "\t%s\n", strarray_nth(fnames, i));
+    }
+}
+
 EXPORTED int backupdb_reconstruct(void)
 {
-    return partlist_backup_foreach(reconstruct_partition, NULL);
+    hash_table discovered = HASH_TABLE_INITIALIZER;
+
+    // FIXME what is hash table size? number of buckets?
+    construct_hash_table(&discovered, 1024, 0);
+
+    partlist_backup_foreach(discover_backups, &discovered);
+
+    hash_enumerate(&discovered, discovered_dump, NULL);
+
+    free_hash_table(&discovered, (void (*)(void *)) strarray_free);
+
+    return 0;
 }
