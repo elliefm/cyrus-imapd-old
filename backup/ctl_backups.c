@@ -424,6 +424,7 @@ int main (int argc, char **argv)
     if (cmd == CTLBU_CMD_RECONSTRUCT) {
         /* special handling for reconstruct */
         // FIXME
+        r = backupdb_reconstruct();
     }
     else if (options.mode == CTLBU_MODE_ALL) {
         /* loop over entire backups.db */
