@@ -57,6 +57,7 @@ void backup_cleanup_staging_path(void);
 /* opening the backups database */
 #define FNAME_BACKUPDB "/backups.db"
 int backupdb_open(struct db **backup_dbp, struct txn **tidp);
+int backupdb_reconstruct(void);
 
 
 /* opening and closing backups */
