@@ -153,6 +153,11 @@ static int reconstruct_partition(partitem_t *part_item, void *rock)
                 if (n <= 0 || (unsigned) n >= sizeof(fname)) continue;
                 if (stat(fname, &sbuf) != 0) continue;
 
+                /* skip empty files */
+                if (sbuf.st_size == 0) continue;
+
+                /* skip directories and such */
+                if (!S_ISREG(sbuf.st_mode)) continue;
 
                 fprintf(stderr, "%s\n", fname);
             }
