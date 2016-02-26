@@ -1478,7 +1478,9 @@ static int update_mailbox_once(struct sync_folder *local,
 	goto done;
 
     /* hold the annotate state open */
-    mailbox_get_annotate_state(mailbox, ANNOTATE_ANY_UID, &astate);
+    r = mailbox_get_annotate_state(mailbox, ANNOTATE_ANY_UID, &astate);
+    syslog(LOG_DEBUG, "%s (%d): mailbox_get_annotate_state %s: %s",
+	__func__, __LINE__, local->name, error_message(r));
     /* and force it to hold a transaction while it does stuff */
     annotate_state_begin(astate);
 
@@ -1510,6 +1512,8 @@ static int update_mailbox_once(struct sync_folder *local,
     /* make sure CRC is updated if we're retrying */
     if (is_repeat) {
 	r = mailbox_index_recalc(mailbox);
+	syslog(LOG_DEBUG, "%s (%d): mailbox_index_recalc %s: %s",
+	    __func__, __LINE__, local->name, error_message(r));
 	if (r) goto done;
     }
 
@@ -1519,6 +1523,8 @@ static int update_mailbox_once(struct sync_folder *local,
 
     part_list = sync_reserve_partlist(reserve_guids, mailbox->part);
     r = sync_mailbox(mailbox, remote, part_list, kl, kupload, 1);
+    syslog(LOG_DEBUG, "%s (%d): sync_mailbox %s: %s",
+	__func__, __LINE__, local->name, error_message(r));
     if (r) goto done;
 
     /* keep the mailbox locked for shorter time! Unlock the index now
@@ -1531,6 +1537,8 @@ static int update_mailbox_once(struct sync_folder *local,
 	struct dlist *kul1 = dlist_splice(kupload, 1024);
 	sync_send_apply(kul1, sync_out);
 	r = sync_parse_response("MESSAGE", sync_in, NULL);
+	syslog(LOG_DEBUG, "%s (%d): sync_parse_response %s: %s",
+	    __func__, __LINE__, local->name, error_message(r));
 	dlist_free(&kul1);
 	if (r) goto done; /* abort earlier */
     }
@@ -1541,6 +1549,8 @@ static int update_mailbox_once(struct sync_folder *local,
     /* update the mailbox */
     sync_send_apply(kl, sync_out);
     r = sync_parse_response("MAILBOX", sync_in, NULL);
+    syslog(LOG_DEBUG, "%s (%d): sync_parse_response %s: %s",
+	__func__, __LINE__, local->name, error_message(r));
 
 done:
     mailbox_close(&mailbox);
@@ -1555,19 +1565,35 @@ static int update_mailbox(struct sync_folder *local,
 			  struct sync_reserve_list *reserve_guids)
 {
     int r = update_mailbox_once(local, remote, reserve_guids, 0);
+    syslog(LOG_DEBUG, "%s (%d): update_mailbox_once %s: %s",
+	   __func__, __LINE__, local->name, error_message(r));
 
     /* never retry - other end should always sync cleanly */
     if (no_copyback) return r;
 
     if (r == IMAP_AGAIN) {
 	r = mailbox_full_update(local->name);
-	if (!r) r = update_mailbox_once(local, remote, reserve_guids, 1);
+	syslog(LOG_DEBUG, "%s (%d): mailbox_full_update %s: %s",
+	    __func__, __LINE__, local->name, error_message(r));
+
+	if (!r) {
+	    r = update_mailbox_once(local, remote, reserve_guids, 1);
+	    syslog(LOG_DEBUG, "%s (%d): update_mailbox_once %s: %s",
+		__func__, __LINE__, local->name, error_message(r));
+	}
     }
     else if (r == IMAP_SYNC_CHECKSUM) {
 	syslog(LOG_ERR, "CRC failure on sync for %s, trying full update",
 	       local->name);
 	r = mailbox_full_update(local->name);
-	if (!r) r = update_mailbox_once(local, remote, reserve_guids, 1);
+	syslog(LOG_DEBUG, "%s (%d): mailbox_full_update %s: %s",
+	    __func__, __LINE__, local->name, error_message(r));
+
+	if (!r) {
+	    r = update_mailbox_once(local, remote, reserve_guids, 1);
+	    syslog(LOG_DEBUG, "%s (%d): update_mailbox_once %s: %s",
+		__func__, __LINE__, local->name, error_message(r));
+	}
     }
 
     return r;
