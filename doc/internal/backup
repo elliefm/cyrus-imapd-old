@@ -868,6 +868,7 @@ todo list
 * valgrind
 * finish reconstruct
 * compact: split before append?
+* cyr_backup, ctl_backups list: add -j option for json output, for consistent use by wrappers
 
 compact implementation steps:
     1 remove unused chunks, keep everything else as is
