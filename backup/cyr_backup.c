@@ -679,14 +679,12 @@ static int dump_buf(const struct buf *buf, void *rock)
 }
 
 static int cmd_dump_chunk(struct backup *backup,
-                          json_t **json,
+                          json_t **json __attribute__((unused)),
                           const struct cyrbu_cmd_options *options)
 {
     struct backup_chunk *chunk = NULL;
     int chunk_id;
     int r;
-
-    (void) json;
 
     chunk_id = atoi(strarray_nth(options->argv, 0));
     if (chunk_id <= 0) return -1;
@@ -701,26 +699,23 @@ static int cmd_dump_chunk(struct backup *backup,
 }
 
 static int cmd_dump_mailbox(struct backup *backup,
-                            json_t **json,
+                            json_t **json __attribute__((unused)),
                             const struct cyrbu_cmd_options *options)
 {
     // FIXME
     (void) backup;
-    (void) json;
     (void) options;
     fprintf(stderr, "%s: unimplemented\n", __func__);
     return -1;
 }
 
 static int cmd_dump_message(struct backup *backup,
-                            json_t **json,
+                            json_t **json __attribute__((unused)),
                             const struct cyrbu_cmd_options *options)
 {
     struct backup_message *message = NULL;
     struct message_guid want_guid;
     int r;
-
-    (void) json;
 
     if (!message_guid_decode(&want_guid, strarray_nth(options->argv, 0)))
         return IMAP_NOTFOUND;
