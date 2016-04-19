@@ -409,24 +409,35 @@ static int cmd_list_all(struct backup *backup,
                         json_t **json,
                         const struct cyrbu_cmd_options *options)
 {
+    json_t *all = json_object();
     json_t *chunks = NULL;
     json_t *mailboxes = NULL;
     json_t *messages = NULL;
+    int r;
 
-    (void) json;
+    r = cmd_list_chunks(backup, &chunks, options);
+    if (!r)
+        json_object_set_new(all, "chunks", chunks);
 
-    fprintf(stderr, "listing chunks:\n");
-    cmd_list_chunks(backup, &chunks, options);
+    r = cmd_list_mailboxes(backup, &mailboxes, options);
+    if (!r)
+        json_object_set_new(all, "mailboxes", mailboxes);
 
-    fprintf(stderr, "\nlisting mailboxes:\n");
-    cmd_list_mailboxes(backup, &mailboxes, options);
+    r = cmd_list_messages(backup, &messages, options);
+    if (!r)
+        json_object_set_new(all, "messages", messages);
 
-    fprintf(stderr, "\nlisting messages:\n");
-    cmd_list_messages(backup, &messages, options);
+    if (r) {
+        if (chunks) json_decref(chunks);
+        if (mailboxes) json_decref(mailboxes);
+        if (messages) json_decref(messages);
+        json_decref(all);
+    }
+    else {
+        *json = all;
+    }
 
-    // FIXME collate chunks, mailboxes and messages into json
-
-    return 0;
+    return r;
 }
 
 static int cmd_list_chunks(struct backup *backup,
