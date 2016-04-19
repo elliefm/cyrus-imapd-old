@@ -513,12 +513,9 @@ static int cmd_list_mailboxes(struct backup *backup,
 
 static int list_message_cb(const struct backup_message *message, void *rock)
 {
-    const struct cyrbu_cmd_options *options =
-        (const struct cyrbu_cmd_options *) rock;
+    json_t *messages = (json_t *) rock;
 
-    (void) options;
-
-    fprintf(stdout, "%s\n", message_guid_encode(message->guid));
+    json_array_append_new(messages, json_string(message_guid_encode(message->guid)));
 
     return 0;
 }
@@ -527,10 +524,20 @@ static int cmd_list_messages(struct backup *backup,
                              json_t **json,
                              const struct cyrbu_cmd_options *options)
 {
-    (void) json;
+    int r;
+    json_t *messages = json_array();
 
-    return backup_message_foreach(backup, 0, NULL,
-                                  list_message_cb, (void *) options);
+    (void) options;
+
+    r = backup_message_foreach(backup, 0, NULL,
+                               list_message_cb, messages);
+
+    if (!r)
+        *json = messages;
+    else
+        json_decref(messages);
+
+    return r;
 }
 
 static int cmd_show_chunks(struct backup *backup,
