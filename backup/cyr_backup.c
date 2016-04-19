@@ -389,16 +389,19 @@ int main(int argc, char **argv)
 
 static void format_json(json_t *json, int illegibility)
 {
-    // FIXME implement this
-    (void) json;
-    (void) illegibility;
-    return;
+    int flags = JSON_PRESERVE_ORDER;
+    char *dump;
+
+    if (illegibility < 2) flags |= JSON_INDENT(2);
+    dump = json_dumps(json, flags);
+    printf("%s\n", dump);
+    free(dump);
 }
 
 static void format_text(json_t *json)
 {
-    // FIXME implement this
-    (void) json;
+    // FIXME implement this -- just dump json anyway for now
+    format_json(json, 1);
     return;
 }
 
