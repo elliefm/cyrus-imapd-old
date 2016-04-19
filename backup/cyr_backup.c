@@ -478,37 +478,52 @@ static int cmd_list_chunks(struct backup *backup,
 static int list_mailbox_cb(const struct backup_mailbox *mailbox,
                            void *rock)
 {
-    const struct cyrbu_cmd_options *options =
-        (const struct cyrbu_cmd_options *) rock;
+    json_t *mailboxes = (json_t *) rock;
+    json_t *obj = json_object();
     char ts_last_appenddate[32] = "[unknown]";
-
-    (void) options;
+    int r;
 
     strftime(ts_last_appenddate, sizeof(ts_last_appenddate), "%F %T",
              localtime(&mailbox->last_appenddate));
 
-    fprintf(stdout, "%s  %s  %s\n",
-                    mailbox->uniqueid,
-                    ts_last_appenddate,
-                    mailbox->mboxname);
+    r = json_object_set_new(obj, "uniqueid",
+                            json_string(mailbox->uniqueid));
+    if (r) goto done;
 
-    return 0;
+    r = json_object_set_new(obj, "last_appenddate",
+                            json_string(ts_last_appenddate));
+    if (r) goto done;
+
+    r = json_object_set_new(obj, "mboxname",
+                            json_string(mailbox->mboxname));
+
+done:
+    if (!r)
+        json_array_append_new(mailboxes, obj);
+    else
+        json_decref(obj);
+
+    return r;
 }
 
 static int cmd_list_mailboxes(struct backup *backup,
                               json_t **json,
                               const struct cyrbu_cmd_options *options)
 {
-    (void) json;
+    json_t *mailboxes = json_array();
 
-    fprintf(stdout, "%-36s  %-19s  %s\n",
-                    "uniqueid",
-                    "last append date",
-                    "mboxname");
+    (void) options;
 
-    return backup_mailbox_foreach(backup, 0,
-                                  BACKUP_MAILBOX_NO_RECORDS,
-                                  list_mailbox_cb, (void *) options);
+    int r = backup_mailbox_foreach(backup, 0,
+                               BACKUP_MAILBOX_NO_RECORDS,
+                               list_mailbox_cb, mailboxes);
+
+    if (!r)
+        *json = mailboxes;
+    else
+        json_decref(mailboxes);
+
+    return r;
 }
 
 static int list_message_cb(const struct backup_message *message, void *rock)
