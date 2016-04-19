@@ -435,19 +435,20 @@ static int cmd_list_chunks(struct backup *backup,
 {
     struct backup_chunk_list *chunk_list = NULL;
     struct backup_chunk *chunk;
+    json_t *json_chunks;
 
-    (void) json;
     (void) options;
 
     chunk_list = backup_get_chunks(backup);
     if (!chunk_list) return -1;
 
-    // FIXME dedup this with lcb_printinfo.c:detail_full()
-    fprintf(stdout, "     id offset\tlength\tratio%%\tstart time           end time\n");
+    json_chunks = json_array();
+
     for (chunk = chunk_list->head; chunk; chunk = chunk->next) {
         char ts_start[32] = "[unknown]";
         char ts_end[32] = "[unknown]";
         double ratio;
+        json_t *obj;
 
         strftime(ts_start, sizeof(ts_start), "%F %T",
                  localtime(&chunk->ts_start));
@@ -462,15 +463,18 @@ static int cmd_list_chunks(struct backup *backup,
             ratio = 0.0;
         }
 
-        fprintf(stdout, "%7d " OFF_T_FMT "\t" SIZE_T_FMT "\t%6.1f\t%s  %s\n",
-                        chunk->id,
-                        chunk->offset,
-                        chunk->length,
-                        ratio,
-                        ts_start,
-                        ts_end);
+        obj = json_object();
+        json_object_set_new(obj, "id", json_integer(chunk->id));
+        json_object_set_new(obj, "offset", json_integer(chunk->offset));
+        json_object_set_new(obj, "length", json_integer(chunk->length));
+        json_object_set_new(obj, "ratio", json_real(ratio));
+        json_object_set_new(obj, "start time", json_string(ts_start));
+        json_object_set_new(obj, "end time", json_string(ts_end));
+
+        json_array_append_new(json_chunks, obj);
     }
 
+    *json = json_chunks;
     backup_chunk_list_free(&chunk_list);
     return 0;
 }
