@@ -49,6 +49,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <jansson.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -61,6 +62,7 @@
 
 #include "imap/global.h"
 #include "imap/imap_err.h"
+#include "imap/json_support.h"
 
 #include "backup/backup.h"
 
@@ -95,6 +97,7 @@ static void usage(void)
     fprintf(stderr, "%s\n",
             "Options:\n"
             "    -C alt_config       # alternate config file\n"
+            "    -j                  # output in JSON format\n"
             "    -v                  # verbose\n"
     );
 
@@ -126,32 +129,48 @@ enum cyrbu_mode {
 
 struct cyrbu_cmd_options {
     strarray_t *argv;
+    int json;
     int verbose;
 };
 
 typedef int cyrbu_cmd_func(struct backup *,
+                           json_t **json,
                            const struct cyrbu_cmd_options *);
 
 static int cmd_list_all(struct backup *backup,
+                        json_t **json,
                         const struct cyrbu_cmd_options *options);
 static int cmd_list_chunks(struct backup *backup,
+                           json_t **json,
                            const struct cyrbu_cmd_options *options);
 static int cmd_list_mailboxes(struct backup *backup,
+                              json_t **json,
                               const struct cyrbu_cmd_options *options);
 static int cmd_list_messages(struct backup *backup,
+                             json_t **json,
                              const struct cyrbu_cmd_options *options);
 static int cmd_show_chunks(struct backup *backup,
+                           json_t **json,
                            const struct cyrbu_cmd_options *options);
 static int cmd_show_mailboxes(struct backup *backup,
+                              json_t **json,
                               const struct cyrbu_cmd_options *options);
 static int cmd_show_messages(struct backup *backup,
+                             json_t **json,
                              const struct cyrbu_cmd_options *options);
 static int cmd_dump_chunk(struct backup *backup,
+                          json_t **json,
                           const struct cyrbu_cmd_options *options);
 static int cmd_dump_mailbox(struct backup *backup,
+                            json_t **json,
                             const struct cyrbu_cmd_options *options);
 static int cmd_dump_message(struct backup *backup,
+                            json_t **json,
                             const struct cyrbu_cmd_options *options);
+
+/* XXX can these be const correct? */
+static void format_json(json_t *json, int illegibility);
+static void format_text(json_t *json);
 
 enum cyrbu_cmd {
     CYRBU_CMD_UNSPECIFIED = 0,
@@ -226,9 +245,10 @@ int main(int argc, char **argv)
     const char *subcommand = NULL;
     struct backup *backup = NULL;
     mbname_t *mbname = NULL;
+    json_t *output = NULL;
     int i, opt, r = 0;
 
-    while ((opt = getopt(argc, argv, "C:fmuv")) != EOF) {
+    while ((opt = getopt(argc, argv, "C:fjmuv")) != EOF) {
         switch (opt) {
         case 'C':
             alt_config = optarg;
@@ -236,6 +256,9 @@ int main(int argc, char **argv)
         case 'f':
             if (mode != CYRBU_MODE_UNSPECIFIED) usage();
             mode = CYRBU_MODE_FILENAME;
+            break;
+        case 'j':
+            options.json++;
             break;
         case 'm':
             if (mode != CYRBU_MODE_UNSPECIFIED) usage();
@@ -293,6 +316,8 @@ int main(int argc, char **argv)
     case CYRBU_CMD_DUMP_MESSAGE:
         /* these need exactly one more argument */
         if (argc - optind != 1) usage();
+        /* and can't output json (so silently ignore -j flag) */
+        options.json = 0;
         break;
     default:
         usage();
@@ -334,7 +359,18 @@ int main(int argc, char **argv)
 
     /* run command */
     if (!r && cmd_func[cmd])
-        r = cmd_func[cmd](backup, &options);
+        r = cmd_func[cmd](backup, &output, &options);
+
+    if (!r && output) {
+        if (options.json) {
+            format_json(output, options.json);
+        }
+        else {
+            format_text(output);
+        }
+    }
+
+    // FIXME free output
 
     if (r)
         fprintf(stderr, "%s: %s\n", backup_name, error_message(r));
@@ -351,27 +387,53 @@ int main(int argc, char **argv)
     exit(r ? EC_TEMPFAIL : EC_OK);
 }
 
+static void format_json(json_t *json, int illegibility)
+{
+    // FIXME implement this
+    (void) json;
+    (void) illegibility;
+    return;
+}
+
+static void format_text(json_t *json)
+{
+    // FIXME implement this
+    (void) json;
+    return;
+}
+
 static int cmd_list_all(struct backup *backup,
+                        json_t **json,
                         const struct cyrbu_cmd_options *options)
 {
+    json_t *chunks = NULL;
+    json_t *mailboxes = NULL;
+    json_t *messages = NULL;
+
+    (void) json;
+
     fprintf(stderr, "listing chunks:\n");
-    cmd_list_chunks(backup, options);
+    cmd_list_chunks(backup, &chunks, options);
 
     fprintf(stderr, "\nlisting mailboxes:\n");
-    cmd_list_mailboxes(backup, options);
+    cmd_list_mailboxes(backup, &mailboxes, options);
 
     fprintf(stderr, "\nlisting messages:\n");
-    cmd_list_messages(backup, options);
+    cmd_list_messages(backup, &messages, options);
+
+    // FIXME collate chunks, mailboxes and messages into json
 
     return 0;
 }
 
 static int cmd_list_chunks(struct backup *backup,
+                           json_t **json,
                            const struct cyrbu_cmd_options *options)
 {
     struct backup_chunk_list *chunk_list = NULL;
     struct backup_chunk *chunk;
 
+    (void) json;
     (void) options;
 
     chunk_list = backup_get_chunks(backup);
@@ -431,8 +493,11 @@ static int list_mailbox_cb(const struct backup_mailbox *mailbox,
 }
 
 static int cmd_list_mailboxes(struct backup *backup,
+                              json_t **json,
                               const struct cyrbu_cmd_options *options)
 {
+    (void) json;
+
     fprintf(stdout, "%-36s  %-19s  %s\n",
                     "uniqueid",
                     "last append date",
@@ -456,28 +521,36 @@ static int list_message_cb(const struct backup_message *message, void *rock)
 }
 
 static int cmd_list_messages(struct backup *backup,
+                             json_t **json,
                              const struct cyrbu_cmd_options *options)
 {
+    (void) json;
+
     return backup_message_foreach(backup, 0, NULL,
                                   list_message_cb, (void *) options);
 }
 
 static int cmd_show_chunks(struct backup *backup,
+                           json_t **json,
                            const struct cyrbu_cmd_options *options)
 {
     // FIXME
     (void) backup;
+    (void) json;
     (void) options;
     fprintf(stderr, "%s: unimplemented\n", __func__);
     return -1;
 }
 
 static int cmd_show_mailboxes(struct backup *backup,
+                              json_t **json,
                               const struct cyrbu_cmd_options *options)
 {
     struct backup_mailbox *mailbox = NULL;
     struct backup_mailbox_message *record = NULL;
     int i;
+
+    (void) json;
 
     for (i = 0; i < strarray_size(options->argv); i++) {
         char ts_deleted[32] = "";
@@ -549,6 +622,7 @@ static int show_message_headers(const struct buf *buf, void *rock)
 }
 
 static int cmd_show_messages(struct backup *backup,
+                             json_t **json,
                              const struct cyrbu_cmd_options *options)
 {
     struct backup_message *message = NULL;
@@ -556,6 +630,8 @@ static int cmd_show_messages(struct backup *backup,
     struct backup_mailbox *mailbox;
     struct message_guid want_guid;
     int i;
+
+    (void) json;
 
     for (i = 0; i < strarray_size(options->argv); i++) {
         if (!message_guid_decode(&want_guid, strarray_nth(options->argv, i)))
@@ -600,11 +676,14 @@ static int dump_buf(const struct buf *buf, void *rock)
 }
 
 static int cmd_dump_chunk(struct backup *backup,
+                          json_t **json,
                           const struct cyrbu_cmd_options *options)
 {
     struct backup_chunk *chunk = NULL;
     int chunk_id;
     int r;
+
+    (void) json;
 
     chunk_id = atoi(strarray_nth(options->argv, 0));
     if (chunk_id <= 0) return -1;
@@ -619,21 +698,26 @@ static int cmd_dump_chunk(struct backup *backup,
 }
 
 static int cmd_dump_mailbox(struct backup *backup,
+                            json_t **json,
                             const struct cyrbu_cmd_options *options)
 {
     // FIXME
     (void) backup;
+    (void) json;
     (void) options;
     fprintf(stderr, "%s: unimplemented\n", __func__);
     return -1;
 }
 
 static int cmd_dump_message(struct backup *backup,
+                            json_t **json,
                             const struct cyrbu_cmd_options *options)
 {
     struct backup_message *message = NULL;
     struct message_guid want_guid;
     int r;
+
+    (void) json;
 
     if (!message_guid_decode(&want_guid, strarray_nth(options->argv, 0)))
         return IMAP_NOTFOUND;
