@@ -2338,7 +2338,7 @@ int main(int argc, char **argv)
     syslog(LOG_DEBUG, "ready for work");
 
     for (;;) {
-	int r, i, maxfd, total_children = 0;
+	int i, maxfd, ready_fds, total_children = 0;
 	struct timeval tv, *tvptr;
 	struct notify_message msg;
 #if defined(HAVE_UCDSNMP) || defined(HAVE_NETSNMP)
@@ -2477,53 +2477,64 @@ int main(int argc, char **argv)
 	snmp_select_info(&maxfd, &rfds, tvptr, &blockp);
 #endif
 	errno = 0;
-	r = myselect(maxfd, &rfds, NULL, NULL, tvptr);
-	if (r == -1 && errno == EAGAIN) continue;
-	if (r == -1 && errno == EINTR) continue;
-	if (r == -1) {
-	    /* uh oh */
-	    fatalf(1, "select failed: %m");
+	ready_fds = myselect(maxfd, &rfds, NULL, NULL, tvptr);
+	if (ready_fds < 0) {
+	    if (errno == EAGAIN || errno == EINTR) {
+		/* clear rfds, it contains the original set, but none are ready */
+		FD_ZERO(&rfds);
+	    }
+	    else {
+		/* uh oh */
+		fatalf(1, "select failed: %m");
+	    }
 	}
 
 #if defined(HAVE_UCDSNMP) || defined(HAVE_NETSNMP)
 	/* check for SNMP queries */
-	snmp_read(&rfds);
-	snmp_timeout();
+	if (ready_fds > 0)
+	    snmp_read(&rfds);
+	if (ready_fds == 0)
+	    snmp_timeout();
 #endif
-	for (i = 0; i < nservices; i++) {
-	    int x = Services[i].stat[0];
-	    int y = Services[i].socket;
 
-	    if ((x >= 0) && FD_ISSET(x, &rfds)) {
-		while ((r = read_msg(x, &msg)) == 0)
-		    process_msg(i, &msg);
+	if (ready_fds > 0) {
+	    for (i = 0; i < nservices; i++) {
+		int x = Services[i].stat[0];
+		int y = Services[i].socket;
 
-		if (r == 2) {
-		    syslog(LOG_ERR,
-			"got incorrectly sized response from child: %x", i);
-		    continue;
+		if ((x >= 0) && FD_ISSET(x, &rfds)) {
+		    while ((r = read_msg(x, &msg)) == 0)
+			process_msg(i, &msg);
+
+		    if (r == 2) {
+			syslog(LOG_ERR,
+			       "got incorrectly sized response from child: %x", i);
+			continue;
+		    }
+		    if (r < 0) {
+			syslog(LOG_ERR,
+			       "error while receiving message from child %x: %m", i);
+			continue;
+		    }
 		}
-		if (r < 0) {
-		    syslog(LOG_ERR,
-			"error while receiving message from child %x: %m", i);
-		    continue;
-		}
-	    }
 
-	    if (!in_shutdown && Services[i].exec &&
-		Services[i].nactive < Services[i].max_workers &&
-		Services[i].ready_workers == 0 &&
-		y >= 0 && FD_ISSET(y, &rfds))
-	    {
-		/* huh, someone wants to talk to us */
-		spawn_service(i);
+		if (!in_shutdown && Services[i].exec &&
+		    Services[i].nactive < Services[i].max_workers &&
+		    Services[i].ready_workers == 0 &&
+		    y >= 0 && FD_ISSET(y, &rfds))
+		{
+		    /* huh, someone wants to talk to us */
+		    spawn_service(i);
+		}
 	    }
 	}
+
 	gettimeofday(&now, 0);
 	child_janitor(now);
 
 #ifdef HAVE_NETSNMP
-	run_alarms();
+	if (ready_fds == 0)
+	    run_alarms();
 #endif
     }
 
