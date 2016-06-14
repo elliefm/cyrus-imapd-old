@@ -2019,6 +2019,22 @@ product version in the capabilities */
    replication actions will be sent by sync_client(8).
    Prefix with a channel name to only apply for that channel */
 
+{ "sync_locked_retries", 0, INT }
+/* In repeat mode, the number of times sync_client(8) should retry in
+   the face of a "mailbox locked" response from the destination server.
+   Prefix with a channel name to apply only for that channel.  Set to
+   zero or less to disable retries (the default).
+
+   Note that this only affects replications to a backupd(8) instance.
+   sync_server(8) does not currently return a "mailbox locked" response
+   (it blocks instead). */
+
+{ "sync_locked_retry_delay", 1, INT }
+/* In repeat mode, the number of seconds sync_client(8) should delay
+   before retrying in the face of a "mailbox locked" response.  Prefix
+   with a channel name to apply only for that channel. Has no effect if
+   \fBsync_locked_retries\fR is disabled. */
+
 { "sync_log", 0, SWITCH }
 /* Enable replication action logging by lmtpd(8), imapd(8), pop3d(8),
    and nntpd(8).  The log {configdirectory}/sync/log is used by
