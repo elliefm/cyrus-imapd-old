@@ -920,34 +920,37 @@ int main(int argc, char **argv)
 
     setbuf(stdout, NULL);
 
-    while ((opt = getopt(argc, argv, "C:vlLS:F:f:w:t:d:n:rRumsozOAp:")) != EOF) {
+    while ((opt = getopt(argc, argv, "AC:F:LOS:d:f:lmn:op:rRst:uvw:z")) != EOF) {
         switch (opt) {
+        case 'A':
+            if (mode != MODE_UNKNOWN)
+                fatal("Mutually exclusive options defined", EC_USAGE);
+            mode = MODE_ALLUSER;
+            break;
+
         case 'C': /* alt config file */
             alt_config = optarg;
             break;
 
-        case 'o': /* only try to connect once */
-            connect_once = 1;
-            break;
-
-        case 'v': /* verbose */
-            verbose++;
-            break;
-
-        case 'l': /* verbose Logging */
-            verbose_logging++;
+        case 'F': /* Shutdown file */
+            sync_shutdown_file = optarg;
             break;
 
         case 'L': /* local mailbox operations only */
             flags |= SYNC_FLAG_LOCALONLY;
             break;
 
+        case 'O':
+            /* don't copy changes back from server */
+            no_copyback = 1;
+            break;
+
         case 'S': /* Socket descriptor for server */
             servername = optarg;
             break;
 
-        case 'F': /* Shutdown file */
-            sync_shutdown_file = optarg;
+        case 'd':
+            min_delta = atoi(optarg);
             break;
 
         case 'f': /* input_filename used by user and mailbox modes; OR
@@ -955,42 +958,8 @@ int main(int argc, char **argv)
             input_filename = optarg;
             break;
 
-        case 'n':
-            channel = optarg;
-            break;
-
-        case 'w':
-            wait = atoi(optarg);
-            break;
-
-        case 't':
-            timeout = atoi(optarg);
-            break;
-
-        case 'd':
-            min_delta = atoi(optarg);
-            break;
-
-        case 'r':
-            background = 1;
-            /* fallthrough */
-
-        case 'R':
-            if (mode != MODE_UNKNOWN)
-                fatal("Mutually exclusive options defined", EC_USAGE);
-            mode = MODE_REPEAT;
-            break;
-
-        case 'A':
-            if (mode != MODE_UNKNOWN)
-                fatal("Mutually exclusive options defined", EC_USAGE);
-            mode = MODE_ALLUSER;
-            break;
-
-        case 'u':
-            if (mode != MODE_UNKNOWN)
-                fatal("Mutually exclusive options defined", EC_USAGE);
-            mode = MODE_USER;
+        case 'l': /* verbose Logging */
+            verbose_logging++;
             break;
 
         case 'm':
@@ -999,10 +968,49 @@ int main(int argc, char **argv)
             mode = MODE_MAILBOX;
             break;
 
+        case 'n':
+            channel = optarg;
+            break;
+
+        case 'o': /* only try to connect once */
+            connect_once = 1;
+            break;
+
+        case 'p':
+            partition = optarg;
+            break;
+
+        case 'r':
+            background = 1;
+            /* fallthrough! */
+        case 'R':
+            if (mode != MODE_UNKNOWN)
+                fatal("Mutually exclusive options defined", EC_USAGE);
+            mode = MODE_REPEAT;
+            break;
+
         case 's':
             if (mode != MODE_UNKNOWN)
                 fatal("Mutually exclusive options defined", EC_USAGE);
             mode = MODE_META;
+            break;
+
+        case 't':
+            timeout = atoi(optarg);
+            break;
+
+        case 'u':
+            if (mode != MODE_UNKNOWN)
+                fatal("Mutually exclusive options defined", EC_USAGE);
+            mode = MODE_USER;
+            break;
+
+        case 'v': /* verbose */
+            verbose++;
+            break;
+
+        case 'w':
+            wait = atoi(optarg);
             break;
 
         case 'z':
@@ -1011,15 +1019,6 @@ int main(int argc, char **argv)
 #else
             fatal("Compress not available without zlib compiled in", EC_SOFTWARE);
 #endif
-            break;
-
-        case 'O':
-            /* don't copy changes back from server */
-            no_copyback = 1;
-            break;
-
-        case 'p':
-            partition = optarg;
             break;
 
         default:
