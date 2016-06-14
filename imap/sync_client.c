@@ -102,13 +102,15 @@ static struct buf tagbuf = BUF_INITIALIZER;
 
 static struct namespace   sync_namespace;
 
-static unsigned flags      = 0;
-static int verbose         = 0;
-static int verbose_logging = 0;
-static int connect_once    = 0;
-static int background      = 0;
-static int do_compress     = 0;
-static int no_copyback     = 0;
+static unsigned flags         = 0;
+static int verbose            = 0;
+static int verbose_logging    = 0;
+static int connect_once       = 0;
+static int background         = 0;
+static int do_compress        = 0;
+static int no_copyback        = 0;
+static int locked_retries     = 0;
+static int locked_retry_delay = 0;
 
 static char *prev_userid;
 
@@ -284,6 +286,7 @@ static int do_restart()
 
 static int do_sync(sync_log_reader_t *slr)
 {
+    struct sync_action_list *locked_list = sync_action_list_create();
     struct sync_action_list *user_list = sync_action_list_create();
     struct sync_action_list *unuser_list = sync_action_list_create();
     struct sync_action_list *meta_list = sync_action_list_create();
@@ -297,6 +300,7 @@ static int do_sync(sync_log_reader_t *slr)
     const char *args[3];
     struct sync_action *action;
     int r = 0;
+    int retry;
 
     while (1) {
         r = sync_log_reader_getitem(slr, args);
@@ -498,9 +502,85 @@ static int do_sync(sync_log_reader_t *slr)
     for (action = user_list->head; action; action = action->next) {
         if (!action->active)
             continue;
+
         r = sync_do_user(action->user, NULL, sync_backend, flags);
-        if (r) goto cleanup;
+        if (r) {
+            if (!locked_retries || r != IMAP_MAILBOX_LOCKED)
+                goto cleanup;
+
+            sync_action_list_add(locked_list, NULL, action->user);
+            if (verbose) {
+                printf("  Retrying: USER %s\n", action->user);
+            }
+            if (verbose_logging) {
+                syslog(LOG_INFO, "  Retrying: USER %s", action->user);
+            }
+        }
         r = do_restart();
+        if (r) goto cleanup;
+    }
+
+    if (locked_retries && locked_list->count) {
+        for (retry = 0; retry < locked_retries; retry++) {
+            int remaining = 0;
+
+            if (locked_retry_delay) {
+                if (verbose) {
+                    printf("  Delaying %i seconds for locked mailboxes\n",
+                        locked_retry_delay);
+                }
+                if (verbose_logging) {
+                    syslog(LOG_INFO, "  Delaying %i seconds for locked mailboxes",
+                        locked_retry_delay);
+                }
+
+                sleep(locked_retry_delay);
+            }
+
+            for (action = locked_list->head; action; action = action->next) {
+                if (!action->active)
+                    continue;
+
+                r = sync_do_user(action->user, NULL, sync_backend, flags);
+                switch (r) {
+                    case 0:
+                        remove_meta(action->user, locked_list);
+                        break;
+                    case IMAP_MAILBOX_LOCKED:
+                        if (verbose) {
+                            printf("  Retrying: USER %s\n", action->user);
+                        }
+                        if (verbose_logging) {
+                            syslog(LOG_INFO, "  Retrying: USER %s", action->user);
+                        }
+                        remaining++;
+                        break;
+                    default:
+                        goto cleanup;
+                }
+
+                r = do_restart();
+                if (r) goto cleanup;
+            }
+
+            if (remaining == 0) break;
+        }
+
+        /* did we eventually process all the locked mailboxes successfully? */
+        for (action = locked_list->head; action; action = action->next) {
+            if (action->active) {
+                if (verbose) {
+                    printf("  Still locked after %d retries: USER %s\n",
+                        locked_retries, action->user);
+                }
+                if (verbose_logging) {
+                    syslog(LOG_INFO, "  Still locked after %d retries: USER %s",
+                        locked_retries, action->user);
+                }
+
+                r = IMAP_MAILBOX_LOCKED;
+            }
+        }
         if (r) goto cleanup;
     }
 
@@ -519,6 +599,7 @@ static int do_sync(sync_log_reader_t *slr)
         syslog(LOG_ERR, "Error in do_sync(): bailing out! %s", error_message(r));
     }
 
+    sync_action_list_free(&locked_list);
     sync_action_list_free(&user_list);
     sync_action_list_free(&unuser_list);
     sync_action_list_free(&meta_list);
@@ -657,6 +738,10 @@ static int get_intconfig(const char *channel, const char *val)
     if (response == -1) {
         if (!strcmp(val, "sync_repeat_interval"))
             response = config_getint(IMAPOPT_SYNC_REPEAT_INTERVAL);
+        else if (!strcmp(val, "sync_locked_retries"))
+            response = config_getint(IMAPOPT_SYNC_LOCKED_RETRIES);
+        else if (!strcmp(val, "sync_locked_retry_delay"))
+            response = config_getint(IMAPOPT_SYNC_LOCKED_RETRY_DELAY);
     }
 
     return response;
@@ -1057,6 +1142,17 @@ int main(int argc, char **argv)
 
     if (!servername)
         fatal("sync_host not defined", EC_SOFTWARE);
+
+    /* get other possibly channel-dependent config */
+    if (!locked_retries)
+        locked_retries = get_intconfig(channel, "sync_locked_retries");
+
+    if (locked_retries < 0) locked_retries = 0;
+
+    if (!locked_retry_delay)
+        locked_retry_delay = get_intconfig(channel, "sync_locked_retry_delay");
+
+    if (locked_retry_delay < 0) locked_retry_delay = 0;
 
     /* Just to help with debugging, so we have time to attach debugger */
     if (wait > 0) {
