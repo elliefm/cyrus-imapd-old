@@ -331,13 +331,12 @@ int main(int argc, char *argv[])
 
     for (i = 0; dblist[i].name; i++) {
         const char *fname = dbfname(&dblist[i]);
-        struct stat sbuf;
 
         if (op == RECOVER)
             check_convert(&dblist[i], fname);
 
         /* if we need to archive this db, add it to the list */
-        if (dblist[i].doarchive && stat(fname, &sbuf) == 0)
+        if (dblist[i].doarchive)
             strarray_add(&files, fname);
 
         /* deal with each dbenv once */
