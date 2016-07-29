@@ -1056,13 +1056,9 @@ int sync_sieve_upload(const char *userid, const char *name,
 
 #ifdef USE_SIEVE
     if (!r) {
-        char *bcname = sieve_getbcfname(newscriptname);
-        if (bcname) {
-            r = sieve_rebuild(newscriptname, bcname, /*force*/ 1, NULL);
-            if (r == SIEVE_PARSE_ERROR || r == SIEVE_FAIL)
-                r = IMAP_SYNC_BADSIEVE;
-            free(bcname);
-        }
+        r = sieve_rebuild(newscriptname, NULL, /*force*/ 1, NULL);
+        if (r == SIEVE_PARSE_ERROR || r == SIEVE_FAIL)
+            r = IMAP_SYNC_BADSIEVE;
     }
 #endif
 
