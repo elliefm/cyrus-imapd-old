@@ -183,18 +183,21 @@ EXPORTED int sieve_rebuild(const char *script_fname, const char *bc_fname,
     if (!script_file) {
         syslog(LOG_ERR, "IOERROR: unable to open %s for reading: %m",
                         script_fname);
-        return IMAP_IOERROR;
+        r = IMAP_IOERROR;
+        goto done;
     }
 
     len = strlcpy(new_bc_fname, bc_fname, sizeof(new_bc_fname));
     if (len >= sizeof(new_bc_fname)) {
         syslog(LOG_DEBUG, "%s: filename too long: %s", __func__, bc_fname);
-        return SIEVE_FAIL;
+        r = SIEVE_FAIL;
+        goto done;
     }
     len = strlcat(new_bc_fname, ".NEW", sizeof(new_bc_fname));
     if (len >= sizeof(new_bc_fname)) {
         syslog(LOG_DEBUG, "%s: filename too long: %s", __func__, bc_fname);
-        return SIEVE_FAIL;
+        r = SIEVE_FAIL;
+        goto done;
     }
 
     bc_fd = open(new_bc_fname, O_CREAT|O_EXCL|O_WRONLY,
@@ -202,8 +205,8 @@ EXPORTED int sieve_rebuild(const char *script_fname, const char *bc_fname,
     if (bc_fd < 0) {
         syslog(LOG_ERR, "IOERROR: unable to open %s for writing: %m",
                         new_bc_fname);
-        fclose(script_file);
-        return IMAP_IOERROR;
+        r = IMAP_IOERROR;
+        goto done;
     }
 
     /* if an error occurs after this point, we need to unlink new_bc_fname */
